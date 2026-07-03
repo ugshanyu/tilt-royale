@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Mobile game: lock zoom, cover notches. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Tilt Royale</title>
+  <link rel="stylesheet" href="/style.css">
+  <!--
+    Load order matters: the Usion SDK and Phaser are classic (blocking) scripts,
+    so both globals exist before the module below runs. Phaser is PINNED — a
+    floating CDN version is a production time bomb.
+  -->
+  <script src="https://usions.com/usion-sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.85.2/dist/phaser.min.js"></script>
+</head>
+<body>
+  <!-- Phaser canvas mounts here. Engine renders; the server simulates. -->
+  <div id="game"></div>
+
+  <!-- DOM overlay layers (lobby / countdown / HUD / results / banners).
+       DOM beats canvas for text: free i18n, a11y roles, crisp fonts. -->
+  <div id="overlay">
+    <div id="banner" role="status" aria-live="polite" hidden></div>
+    <div id="hud" hidden></div>
+    <div id="screens"></div>
+    <div id="debug" hidden></div>
+  </div>
+
+  <noscript>Tilt Royale needs JavaScript enabled.</noscript>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

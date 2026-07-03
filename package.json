@@ -1,0 +1,17 @@
+{
+  "name": "tilt-royale",
+  "version": "1.0.0",
+  "description": "Usion direct-mode multiplayer reference game — 2-4 player server-authoritative tilt arena",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "NODE_ENV=development DEV_ALLOW_UNSIGNED=1 BOT_FILL=1 PORT=3016 node --watch server/index.js",
+    "start": "node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "jose": "^5.9.6",
+    "ws": "^8.18.0"
+  }
+}

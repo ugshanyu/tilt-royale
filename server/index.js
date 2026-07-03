@@ -82,7 +82,14 @@ const server = createServer((req, res) => {
   }
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, rooms: rooms.size, uptime_s: Math.floor(process.uptime()) }));
+    res.end(JSON.stringify({
+      ok: true,
+      rooms: rooms.size,
+      uptime_s: Math.floor(process.uptime()),
+      // Which physical region this replica runs in — the point of a
+      // geo-distributed game server is being close to players, so surface it.
+      region: process.env.RAILWAY_REPLICA_REGION || process.env.RAILWAY_REGION || 'local',
+    }));
     return;
   }
   if (url.pathname === '/shared' || url.pathname.startsWith('/shared/')) {

@@ -164,24 +164,57 @@ async function boot() {
   }
 
   /* -------------------------------------------------------------- scene -- */
+  // Embedded WebViews/iframes are often HIDDEN (0x0) while the host shows its
+  // loading state. Phaser booted at 0x0 creates a 0x0 WebGL buffer and RESIZE
+  // never recovers on its own — the canvas stays black forever (this shipped:
+  // "we are not seeing it on screen"). So: (1) don't construct the game until
+  // the viewport has real size; (2) drive scale from a ResizeObserver so ANY
+  // later size change reaches Phaser, not just window resize events.
+  const gameDiv = document.getElementById('game');
+  const viewportReady = () => gameDiv.clientWidth > 0 && gameDiv.clientHeight > 0;
+
   let sceneRef = null;
-  const sceneReady = new Promise((resolve) => {
-    const ctx = {
-      bus, connection, receiver, predictor, interp, shots,
-      tilt, keyboard, controls, inputSender, sfx,
-      ownFireSeqs,
-      onFireTap: fireAction,
-      onReady: (scene) => { sceneRef = scene; resolve(); },
-    };
-    new Phaser.Game({
-      type: Phaser.AUTO,             // WebGL with canvas fallback
-      parent: 'game',
-      backgroundColor: '#000000',
-      scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
-      // Deliberately NO physics config: Phaser renders, the server simulates.
-      scene: new ArenaScene(ctx),
+  let phaserGame = null;
+  // NOTE: the viewport wait lives INSIDE this async block so it gates ONLY
+  // the scene — the connection (started concurrently below) must never wait
+  // on rendering, or a hidden WebView would fail to join rooms again.
+  const sceneReady = (async () => {
+    if (!viewportReady()) {
+      await new Promise((resolve) => {
+        const ro = new ResizeObserver(() => {
+          if (viewportReady()) { ro.disconnect(); resolve(); }
+        });
+        ro.observe(gameDiv);
+      });
+    }
+    await new Promise((resolve) => {
+      const ctx = {
+        bus, connection, receiver, predictor, interp, shots,
+        tilt, keyboard, controls, inputSender, sfx,
+        ownFireSeqs,
+        onFireTap: fireAction,
+        onReady: (scene) => { sceneRef = scene; resolve(); },
+      };
+      phaserGame = new Phaser.Game({
+        type: Phaser.AUTO,             // WebGL with canvas fallback
+        parent: 'game',
+        backgroundColor: '#000000',
+        scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+        // Deliberately NO physics config: Phaser renders, the server simulates.
+        scene: new ArenaScene(ctx),
+      });
     });
-  });
+    // Drive scale from a ResizeObserver: Phaser's RESIZE mode only listens to
+    // window resize events, which embedded WebViews don't always fire when
+    // the HOST resizes/reveals the iframe.
+    new ResizeObserver(() => {
+      if (!phaserGame || !viewportReady()) return;
+      const w = gameDiv.clientWidth;
+      const h = gameDiv.clientHeight;
+      const s = phaserGame.scale;
+      if (s && (s.width !== w || s.height !== h)) s.resize(w, h);
+    }).observe(gameDiv);
+  })();
 
   /* ------------------------------------------------------ state machine -- */
   let renderWatchdogArmed = false;

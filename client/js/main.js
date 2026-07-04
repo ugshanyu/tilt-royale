@@ -228,6 +228,7 @@ async function boot() {
       if (!renderWatchdogArmed) {
         renderWatchdogArmed = true;
         let lastFrames = 0;
+        let strikes = 0;
         const check = () => {
           const frames = window.__TR_frames || 0;
           const cv = document.querySelector('#game canvas');
@@ -235,15 +236,23 @@ async function boot() {
           lastFrames = frames;
           const b = document.getElementById('banner');
           if (stalled) {
-            b.hidden = false;
-            b.classList.add('warn');
-            b.textContent = `render stalled: frames=${frames} canvas=`
-              + (cv ? `${cv.width}x${cv.height}` : 'missing')
-              + ` phaser=${typeof Phaser !== 'undefined' ? Phaser.VERSION : 'none'}`;
+            // Two-strike rule: a scene that booted at this exact instant looks
+            // stalled for one sample — only alert when it STAYS stalled.
+            strikes += 1;
+            if (strikes >= 2) {
+              b.hidden = false;
+              b.classList.add('warn');
+              b.textContent = `render stalled: frames=${frames} canvas=`
+                + (cv ? `${cv.width}x${cv.height}` : 'missing')
+                + ` phaser=${typeof Phaser !== 'undefined' ? Phaser.VERSION : 'none'}`;
+            }
             setTimeout(check, 2_500); // keep watching — and clear once recovered
-          } else if (b.textContent.startsWith('render stalled')) {
-            b.hidden = true;           // recovered (e.g. viewport arrived late)
-            b.classList.remove('warn');
+          } else {
+            strikes = 0;
+            if (b.textContent.startsWith('render stalled')) {
+              b.hidden = true;         // recovered (e.g. viewport arrived late)
+              b.classList.remove('warn');
+            }
           }
         };
         setTimeout(check, 2_500);

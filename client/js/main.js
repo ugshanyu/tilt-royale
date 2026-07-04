@@ -227,18 +227,26 @@ async function boot() {
       // after the round starts, surface a visible diagnostic.
       if (!renderWatchdogArmed) {
         renderWatchdogArmed = true;
-        setTimeout(() => {
+        let lastFrames = 0;
+        const check = () => {
           const frames = window.__TR_frames || 0;
           const cv = document.querySelector('#game canvas');
-          if (frames < 10 || !cv || cv.width === 0 || cv.height === 0) {
-            const b = document.getElementById('banner');
+          const stalled = frames - lastFrames < 10 || !cv || cv.width === 0 || cv.height === 0;
+          lastFrames = frames;
+          const b = document.getElementById('banner');
+          if (stalled) {
             b.hidden = false;
             b.classList.add('warn');
             b.textContent = `render stalled: frames=${frames} canvas=`
               + (cv ? `${cv.width}x${cv.height}` : 'missing')
               + ` phaser=${typeof Phaser !== 'undefined' ? Phaser.VERSION : 'none'}`;
+            setTimeout(check, 2_500); // keep watching — and clear once recovered
+          } else if (b.textContent.startsWith('render stalled')) {
+            b.hidden = true;           // recovered (e.g. viewport arrived late)
+            b.classList.remove('warn');
           }
-        }, 2_500);
+        };
+        setTimeout(check, 2_500);
       }
     } else {
       inputSender.stop();

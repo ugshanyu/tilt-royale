@@ -5,6 +5,7 @@
 // match a bot touched is NEVER submitted to the platform (webhook.js skips
 // on hadBot) — bots must not mint leaderboard entries.
 import { ARENA, MAX_PLAYERS, WEAPON_NONE } from '../shared/constants.js';
+import { BOT_FILL } from './config.js';
 import { clamp, dist } from './game/util.js';
 
 export const BOT_USER_ID = 'bot-1';
@@ -30,8 +31,13 @@ const humanCount = (room) => room.state.players.filter((p) => !p.bot).length;
  * @param {import('./room.js').Room} room
  */
 export function evaluateFill(room) {
+  // Gated on BOT_FILL — dev convenience ONLY. With the flag off (production)
+  // a lone player waits for their real opponent. A bot that fills a prod
+  // room starts the round before the invited player arrives, turning them
+  // into a spectator (this shipped once: "we are not seeing the other
+  // player" — the flag existed but this check was missing).
   const eligible =
-    room.phase === 'waiting' && humanCount(room) === 1 && !roomHasBot(room);
+    BOT_FILL && room.phase === 'waiting' && humanCount(room) === 1 && !roomHasBot(room);
   if (!eligible && room.botTimer) {
     clearTimeout(room.botTimer);
     room.botTimer = null;

@@ -97,7 +97,16 @@ function platformConnection({ bus }) {
       // router's _userRealtime slot passes through simulateNetwork's inbound
       // wrap, so the debug chaos panel degrades what we actually render.
       g.onRealtime((payload) => bus.emit('net:snapshot', payload));
-      g.on('joined', (p) => bus.emit('net:joined', p));
+      g.on('joined', (p) => {
+        bus.emit('net:joined', p);
+        // Introduce our display name — platform RS256 tokens carry no name
+        // claim, so the server would otherwise label us by raw user id.
+        // Rides the realtime channel as action_type 'hello' (PROTOCOL.md).
+        try {
+          const n = Usion.user && Usion.user.getName && Usion.user.getName();
+          if (n) g.realtime('hello', { name: String(n).slice(0, 24) });
+        } catch { /* cosmetic — never block joining on it */ }
+      });
       g.on('playerJoined', (p) => bus.emit('net:playerJoined', p));
       g.on('playerLeft', (p) => bus.emit('net:playerLeft', p));
       g.on('finished', (p) => bus.emit('net:matchEnd', p));
@@ -187,7 +196,11 @@ function localConnection({ bus, roomId, playerName }) {
   function dispatch(data) {
     const p = data.payload || {};
     switch (data.type) {
-      case 'joined': bus.emit('net:joined', p); break;
+      case 'joined':
+        bus.emit('net:joined', p);
+        // Same hello as platform mode (identical server path).
+        rawSend('input', { action_type: 'hello', action_data: { name: identity.userName.slice(0, 24) } });
+        break;
       case 'player_joined': bus.emit('net:playerJoined', p); break;
       case 'player_left': bus.emit('net:playerLeft', p); break;
       case 'phase': bus.emit('net:phase', p); break;

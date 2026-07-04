@@ -62,6 +62,12 @@ Every client→server message uses the Usion SDK direct-mode envelope:
 
 - Client sends at 30 Hz (SDK `createSender`), latest-wins for tilt; `fires`
   accumulate and flush immediately on tap (min 33 ms gap).
+- **`hello` sub-message**: right after `joined`, the client sends an input
+  frame with `action_type: "hello"`, `action_data: { name }` — platform RS256
+  tokens carry no display-name claim, so this is how rosters get real names
+  (server sanitizes: control chars stripped, 24 chars max). It rides the
+  input channel because the SDK's public `realtime()` API cannot emit custom
+  envelope types. Accepted in every phase.
 - Server keeps *latest input per player* (ticks between messages reuse it) and
   a FIFO of unconsumed fires. Rate limit: token bucket 60 msg/s, burst 10;
   violations → `error` code `RATE_LIMITED`, repeat → close.

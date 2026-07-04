@@ -211,7 +211,30 @@ export class Room {
     });
   }
 
+  /** Client-supplied display name (sanitized) — see the hello route above. */
+  _handleHello(conn, d) {
+    const name = String(d.name || '')
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .trim()
+      .slice(0, 24);
+    if (!name || name === conn.name) return;
+    conn.name = name;
+    const p = this.state.players.find((pl) => pl.userId === conn.userId);
+    if (p) {
+      p.name = name;
+      // Clients rebuild names from any roster-bearing broadcast.
+      this.broadcast('player_joined', {
+        roster: this._roster(), slot: p.slot, user_id: p.userId, name,
+      });
+    }
+  }
+
   _handleInput(conn, payload) {
+    // 'hello' rides the input channel (the SDK's public realtime() API can't
+    // send custom envelope types): the client introduces its display name
+    // right after joining — platform RS256 tokens carry no name claim, so
+    // without this the roster shows raw user ids. Works in every phase.
+    if (payload?.action_type === 'hello') return this._handleHello(conn, payload.action_data || {});
     if (this.phase !== 'playing' && this.phase !== 'countdown') return;
     const p = this.state.players.find((pl) => pl.userId === conn.userId);
     if (!p || !p.alive) return; // spectators and the dead are ignored

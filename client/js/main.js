@@ -209,12 +209,19 @@ async function boot() {
 
   /* --------------------------------------------------------------- go ---- */
   screens.refresh();               // lobby paints while we connect
-  await sceneReady;                // scene subscriptions exist before frames arrive
-  try {
-    await connection.start();
-  } catch (e) {
+  // Connect and scene-boot CONCURRENTLY. Phaser only ticks (and thus only
+  // fires the scene's create()) once the page renders a frame — a hidden or
+  // backgrounded WebView would otherwise never connect at all. The receiver
+  // owns all state and tolerates the scene booting late (it re-reads the
+  // roster in create()); the scene merely renders whatever state exists.
+  const connected = connection.start().catch((e) => {
     fatal(t('error.generic', { msg: (e && e.message) || 'connect failed' }));
-    return;
+    throw e;
+  });
+  try {
+    await Promise.all([sceneReady, connected]);
+  } catch {
+    return; // fatal() already shown
   }
   clock.start();
 }

@@ -12,7 +12,7 @@
  */
 import {
   ARENA, PLAYER_RADIUS, DOT_RADIUS, ORB_RADIUS, PELLET_RADIUS, MISSILE_RADIUS,
-  MAX_DOTS, MAX_PROJECTILES, MAX_ORBS, MAX_PLAYERS,
+  MAX_DOTS, MAX_PROJECTILES, MAX_ORBS, MAX_PLAYERS, FACING_MIN_SPEED,
   WEAPON_WAVE, WEAPON_SCATTER, WEAPON_SEEKER,
 } from '/shared/constants.js';
 import { createFx } from './FxHelpers.js';
@@ -196,13 +196,26 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     // ---- remote players from interpolation ----
+    // Facing is derived from interpolated velocity (facing IS velocity
+    // direction, per shared/movement.js) and eased on the shortest arc —
+    // never from raw/extrapolated angle, which whip-spins across the ±π wrap.
+    if (!this.remoteAngle) this.remoteAngle = new Map();
     const seen = new Set([c.receiver.mySlot()]);
     for (const rp of c.interp.viewPlayers()) {
       const p = this.players[rp.id];
       if (!p) continue;
       seen.add(rp.id);
       if (!rp.alive) { p.sprite.setVisible(false); p.label.setVisible(false); continue; }
-      this.drawPlayer(p, rp.id, rp.x, rp.y, rp.angle, rp, false, time);
+      const moving = Math.hypot(rp.vx || 0, rp.vy || 0) > FACING_MIN_SPEED;
+      const target = moving ? Math.atan2(rp.vy, rp.vx)
+        : (this.remoteAngle.get(rp.id) ?? rp.angle ?? 0);
+      const prev = this.remoteAngle.get(rp.id) ?? target;
+      let dA = target - prev;
+      if (dA > Math.PI) dA -= 2 * Math.PI;
+      else if (dA < -Math.PI) dA += 2 * Math.PI;
+      const eased = prev + dA * 0.35;
+      this.remoteAngle.set(rp.id, eased);
+      this.drawPlayer(p, rp.id, rp.x, rp.y, eased, rp, false, time);
     }
     for (let slot = 0; slot < MAX_PLAYERS; slot++) {
       if (!seen.has(slot)) { const p = this.players[slot]; p.sprite.setVisible(false); p.label.setVisible(false); p.ring.setVisible(false); }

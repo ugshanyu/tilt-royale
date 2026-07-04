@@ -84,11 +84,19 @@ export class Room {
     return this.state.players.map((p) => ({ slot: p.slot, user_id: p.userId, name: p.name }));
   }
 
-  _frameMeta() {
+  /**
+   * Frame header. `advance: true` is ONLY for the 20 Hz broadcast — unicast
+   * keyframes (join/resync) must REUSE the current seq. If a unicast ever
+   * increments `snapSeq`, every OTHER client sees a hole in the broadcast
+   * delta chain, requests a resync, which burns another seq for everyone
+   * else — a self-sustaining ping-pong that freezes remote players. (This
+   * exact bug shipped in v1; the seq counter belongs to the broadcast chain.)
+   */
+  _frameMeta({ advance = false } = {}) {
     const ack = {};
     for (const p of this.state.players) ack[p.slot] = p.ackIseq;
     return {
-      s: ++this.snapSeq,
+      s: advance ? ++this.snapSeq : this.snapSeq,
       serverTs: Date.now(),
       serverTick: this.serverTick,
       phase: this.phase,
@@ -119,8 +127,13 @@ export class Room {
           t: payload?.t, server_ts: Date.now(), server_tick: this.serverTick,
         });
         // Reconnect resync path: SDK pings with last_sequence when it
-        // suspects it missed frames — answer with a full keyframe.
-        if (payload && payload.last_sequence !== undefined) this._unicastKeyframe(conn);
+        // suspects it missed frames — answer with a full keyframe, but only
+        // when the client is actually behind (mobile WebViews fire resyncs on
+        // every visibility flip; answering an up-to-date client is waste).
+        if (payload && payload.last_sequence !== undefined
+            && Number(payload.last_sequence) < this.snapSeq) {
+          this._unicastKeyframe(conn);
+        }
         return;
       }
       case 'sync': return this._unicastKeyframe(conn);
@@ -302,7 +315,8 @@ export class Room {
   _netTick() {
     this.netTick += 1;
     const keyframe = (this.netTick - 1) % KEYFRAME_EVERY_NET_TICKS === 0;
-    const { json } = buildFrame(this.state, this._frameMeta(), { keyframe, consume: true });
+    // The ONLY place that advances the broadcast seq chain (see _frameMeta).
+    const { json } = buildFrame(this.state, this._frameMeta({ advance: true }), { keyframe, consume: true });
     for (const conn of this.conns.values()) this._sendRaw(conn, json);
     for (const conn of this.spectators) this._sendRaw(conn, json);
   }

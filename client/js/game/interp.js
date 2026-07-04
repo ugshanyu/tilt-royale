@@ -44,10 +44,24 @@ export function createInterpGroups() {
       projs.add({ state: s.projs, time: s.serverTs });
     },
 
-    /** Per-render-frame views. Angle blends on the shortest arc. */
-    viewPlayers: () => players.calc('x y angle(rad)') || [],
+    /**
+     * Per-render-frame views. Player facing is NOT an interpolated key: the
+     * SDK blends angles on the shortest arc but EXTRAPOLATES them linearly,
+     * so an underrun straddling the ±π wrap projects a huge fake angular
+     * velocity and the remote arrow whip-spins. We interpolate velocity
+     * instead and derive facing from it in the scene (facing IS velocity
+     * direction in this game — shared/movement.js defines it that way).
+     */
+    viewPlayers: () => players.calc('x y vx vy') || [],
     viewDots: () => dots.calc('x y') || [],
     viewProjs: () => projs.calc('x y') || [],
+
+    /** Drop all buffered history (rejoin: never blend across a gap). */
+    clear() {
+      players.vault?.clear?.();
+      dots.vault?.clear?.();
+      projs.vault?.clear?.();
+    },
 
     /** Current player-group buffer (ms) — reported as `interp_ms` so the
      *  server lag-compensates hits against what we actually rendered. */

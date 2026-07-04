@@ -5,10 +5,13 @@
  * interpolation groups, predicted-shot reconcile) on every snapshot.
  *
  * Snapshot discipline (PROTOCOL.md):
- *  - `s` is monotonic: anything with s <= lastS is stale → drop.
- *  - A delta with a gap (s > lastS+1) can't be patched — dot membership is
- *    stateful — so we drop it AND request a keyframe (ping{last_sequence}),
- *    then drop further deltas until that keyframe lands.
+ *  - `s` is monotonic on the BROADCAST chain; unicast resync keyframes REUSE
+ *    the current seq, so keyframes are accepted at s == lastS too.
+ *  - Only the dot stream is stateful (membership deltas). A seq gap therefore
+ *    stalls DOTS ONLY until a keyframe restores them; players/projectiles/
+ *    orbs/header are full state on every frame and are NEVER dropped on a
+ *    gap — remote player motion must survive any resync window.
+ *  - Resync requests are throttled (they cost a full keyframe each).
  */
 import {
   decodePlayerRow, decodeDotsKeyframe, applyDotsDelta,
@@ -29,7 +32,8 @@ export function createReceiver({ bus, connection, predictor, interp, shots }) {
   let orbs = [];
   let dots = [];                 // id-sorted [{id,x,y}] — mutated by deltas
   let lastS = -1;
-  let awaitingKeyframe = false;
+  let dotsSynced = false;        // dots patch cleanly only on a contiguous chain
+  let lastResyncReqAt = 0;       // throttle: each request costs a keyframe
   let selfAlive = false;
 
   // Debug-panel stats (bytes are approximated from the parsed payload —
@@ -59,32 +63,45 @@ export function createReceiver({ bus, connection, predictor, interp, shots }) {
     mySlot = p.slot;
     spectator = !!p.spectator;
     lastS = -1;                  // accept the join keyframe unconditionally
-    awaitingKeyframe = false;
+    dotsSynced = false;
+    // A rejoin follows a gap: clear interp history so the buffer can't blend
+    // across the disconnect (old snapshot → fresh keyframe = a fake streak).
+    interp.clear?.();
     setRoster(p.roster);
     setPhase(p.phase);
     if (p.snapshot) handleSnapshot(p.snapshot, true);
     bus.emit('game:me', { slot: mySlot, spectator });
   }
 
+  function requestResync() {
+    const now = Date.now();
+    if (now - lastResyncReqAt < 500) return;     // a keyframe per request — throttle
+    lastResyncReqAt = now;
+    connection.requestKeyframe(Math.max(0, lastS));
+  }
+
   function handleSnapshot(p, fromJoin) {
     if (typeof p.s !== 'number') return;
     const isKey = !!p.k;
-    if (p.s <= lastS) return;                    // stale / duplicate
-    if (!isKey) {
-      if (awaitingKeyframe) return;              // resync in flight
-      if (p.s !== lastS + 1) {                   // gap ⇒ dot membership unknown
-        awaitingKeyframe = true;
-        connection.requestKeyframe(lastS);
-        return;
-      }
-    }
+    const fresh = p.s > lastS;
+    // Duplicate/ancient deltas carry nothing new. A keyframe at s == lastS is
+    // the normal unicast resync (server reuses the broadcast seq) — apply its
+    // dots, but don't re-fire events/interp for a frame we already processed.
+    if (!fresh && !(isKey && p.s === lastS)) return;
 
+    // Dots: the only stateful stream. Patch on a contiguous chain, restore
+    // from any keyframe, and on a gap stall ONLY the dots while a throttled
+    // resync is in flight — players/projs/orbs below flow regardless.
     if (isKey) {
       dots = decodeDotsKeyframe(p.dots || { ids: [], xs: [], ys: [] });
-      awaitingKeyframe = false;
-    } else {
+      dotsSynced = true;
+    } else if (dotsSynced && p.s === lastS + 1) {
       applyDotsDelta(dots, p.dots || {});
+    } else {
+      dotsSynced = false;
+      requestResync();
     }
+    if (!fresh) return;                          // resync keyframe: dots restored, rest already seen
     lastS = p.s;
 
     if (stats.measureBytes) { try { stats.bytes += JSON.stringify(p).length; } catch (e) {} }
@@ -152,8 +169,8 @@ export function createReceiver({ bus, connection, predictor, interp, shots }) {
   bus.on('net:error', (p) => bus.emit('game:error', p));
   // Local-dev reconnect: our socket re-joined; ask for a fresh keyframe from
   // our last seq (the SDK does the equivalent requestSync itself in platform
-  // mode). Redundant requests are harmless — keyframes are idempotent.
-  bus.on('net:reconnected', () => connection.requestKeyframe(Math.max(0, lastS)));
+  // mode — the throttle also folds that duplicate into one request).
+  bus.on('net:reconnected', () => requestResync());
 
   function getRoster() {
     const out = [];

@@ -172,6 +172,7 @@ export class ArenaScene extends Phaser.Scene {
     const c = this.ctx;
     const rd = this.fx.renderDelta(delta); // render-scaled delta (hit-stop) — cosmetics ONLY
     const now = Date.now();
+    window.__TR_frames = (window.__TR_frames || 0) + 1; // render watchdog (main.js)
 
     // ---- input → prediction → outbound stream (wall-clock, never rd) ----
     const merged = c.controls.sample(delta); // tilt when active, else keyboard/drag

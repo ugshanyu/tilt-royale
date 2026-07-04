@@ -184,9 +184,29 @@ async function boot() {
   });
 
   /* ------------------------------------------------------ state machine -- */
+  let renderWatchdogArmed = false;
   bus.on('game:phase', ({ phase }) => {
     if (phase === 'playing' || phase === 'countdown') {
       if (connection.isConnected()) inputSender.start();
+      // Render watchdog: data can flow perfectly while the canvas paints
+      // nothing (engine boot failure inside an embedded WebView is invisible
+      // remotely otherwise). If the scene hasn't produced frames shortly
+      // after the round starts, surface a visible diagnostic.
+      if (!renderWatchdogArmed) {
+        renderWatchdogArmed = true;
+        setTimeout(() => {
+          const frames = window.__TR_frames || 0;
+          const cv = document.querySelector('#game canvas');
+          if (frames < 10 || !cv || cv.width === 0 || cv.height === 0) {
+            const b = document.getElementById('banner');
+            b.hidden = false;
+            b.classList.add('warn');
+            b.textContent = `render stalled: frames=${frames} canvas=`
+              + (cv ? `${cv.width}x${cv.height}` : 'missing')
+              + ` phaser=${typeof Phaser !== 'undefined' ? Phaser.VERSION : 'none'}`;
+          }
+        }, 2_500);
+      }
     } else {
       inputSender.stop();
     }

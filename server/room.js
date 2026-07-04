@@ -121,7 +121,13 @@ export class Room {
       case 'input':
       case 'action': // SDK versions drift on the type name — accept both
         return this._handleInput(conn, payload);
-      case 'heartbeat': return; // liveness already refreshed by index.js
+      case 'heartbeat':
+        // Reply so there is DOWNSTREAM traffic even while a room idles in
+        // 'waiting' (no net ticks run outside countdown/playing). Proxies —
+        // Railway's edge included — kill connections with a silent downstream
+        // after ~60 s, which put waiting clients in a reconnect loop.
+        this._send(conn, 'heartbeat', { t: Date.now() });
+        return;
       case 'ping': {
         this._send(conn, 'pong', {
           t: payload?.t, server_ts: Date.now(), server_tick: this.serverTick,

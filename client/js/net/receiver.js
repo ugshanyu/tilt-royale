@@ -141,9 +141,9 @@ export function createReceiver({ bus, connection, predictor, interp, shots }) {
       serverTs: p.server_ts,
       players: players
         .filter((d) => d.slot !== mySlot)
-        .map((d) => ({ id: d.slot, x: d.x, y: d.y, angle: d.angle,
-                       alive: d.alive, shield: d.shield, stagger: d.stagger,
-                       connected: d.connected, weapon: d.weapon })),
+        .map((d) => ({ id: d.slot, x: d.x, y: d.y, vx: d.vx, vy: d.vy,
+                       angle: d.angle, alive: d.alive, shield: d.shield,
+                       stagger: d.stagger, connected: d.connected, weapon: d.weapon })),
       dots: dots.map((d) => ({ id: d.id, x: d.x, y: d.y })),
       projs: projs.map((pr) => ({ id: pr.id, x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy,
                                   kind: pr.kind, owner: pr.owner, fireSeq: pr.fireSeq })),

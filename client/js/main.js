@@ -106,6 +106,11 @@ async function boot() {
   const screens = createScreens({ bus, receiver, tilt, sfx, mode, onArmed: () => {} });
   createHud({ bus, receiver, clock, predictor, interp, connection, sfx, inputSender });
 
+  // Live diagnostics handle (console / remote debugging): inspect the whole
+  // netcode chain in ANY environment — including inside the real host app.
+  // Read-only by convention; costs nothing when unused.
+  window.__TR = { mode, bus, connection, receiver, interp, predictor, clock };
+
   /* ------------------------------------------------------------- firing -- */
   let fireSeq = 0;
   let lastLocalFireAt = 0;
